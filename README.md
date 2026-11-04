@@ -1,8 +1,5 @@
 # Drone Swarm Formation Control and Collision Avoidance
 
-A CS 6376 project with Dr. Karsai exploring formation transitions, target
-assignment, and trajectory tracking for simulated drone swarms.
-
 The current 3D experiment moves 60 drones through **sphere → grid → double helix**.
 A simplified point model generates reference motion. A separate experiment uses
 Crazyflie quadrotors in PyBullet to track that motion.
