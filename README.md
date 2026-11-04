@@ -1,84 +1,162 @@
-# Drone swarm baseline
-20 drones transition circle → grid → heart with independent local PD tracking.
-Run from this directory using Python with numpy, scipy, and matplotlib installed.
+# Drone Swarm Formation Control and Collision Avoidance
 
-    python demo.py --animate minimum
-    python demo.py --animate index
-    python demo.py --plot baseline.png
-    python -m unittest -v
+A CS 6376 project with Dr. Karsai exploring formation transitions, target
+assignment, and trajectory tracking for simulated drone swarms.
 
-The simulator completes both runs first, prints per-transition metrics, then
-plays the chosen animation. A one-second controlled hold follows each arrival.
-The minimum-distance assignment is recomputed at the start of each leg from the
-actual current positions. Velocities carry through the entire sequence.
+The current 3D experiment moves 60 drones through **sphere → grid → double helix**.
+A simplified point model generates reference motion. A separate experiment uses
+Crazyflie quadrotors in PyBullet to track that motion.
 
-Blue rings have radius 0.375 m. Overlap means the 0.750 m center-spacing rule
-is violated. Red highlights are evaluated at displayed frames. Printed metrics
-also check closest approach along each numerical step. Dot sizes are graphical.
+![60-drone reference animation](docs/assets/swarm-3d.gif)
 
-Heart geometry uses x = 16 sin³(t) and
-y = 13 cos(t) − 5 cos(2t) − 2 cos(3t) − cos(4t), scaled by 0.350 m per
-coordinate unit. Twenty slots are approximately equally spaced along arc length,
-rather than equally spaced in t. The heart scale was deliberately selected as
-a stress case after checking several scales. Its minimum target spacing is
-1.556 m. At both tested steps (0.050 and 0.025 s), the minimum-distance
-grid-to-heart transition yields one violation episode and about 0.746 m minimum
-separation. This is a small spacing breach, not evidence of physical contact.
-All endpoints are safely spaced. Assignment minimizes summed straight-line
-distance without enforcing trajectory clearance.
+## Install and run
 
-The controller uses p_dot = v, v_dot = u. Each update computes
-u = norm_limit((target − p) − 2v, 2 m/s²), updates velocity with a speed cap
-of 2 m/s, and uses that velocity to update position (semi-implicit Euler).
-Arrival requires all position errors ≤ 0.100 m and speeds ≤ 0.100 m/s over
-sample times spanning 0.500 s. No avoidance controller is implemented.
-Earlier Wednesday report numbers describe only the original circle-to-grid
-experiment; this extension was added afterward.
+The point-model demos require Python 3.9 or newer. From the repository root:
 
-## X transition extension
-The default sequence is now circle → grid → X. Use --shape heart to restore
-the previous sequence. Run python demo.py --animate minimum for the X show.
-Each of four diagonal arms has five slots, at (±r, ±r) for r = 1,...,5.
-There is no center slot. Minimum target spacing is 1.414 m.
-This X layout was selected after comparing several scales and rotations to
-produce a stronger transition stress case with safe endpoints.
-At h = 0.050 s, minimum assignment produces four grid-to-X violation episodes
-and a minimum separation of 0.644 m. Both are simulation observations.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python -m drone_swarm.demo3d
+```
 
-## 3D show
-Run python demo3d.py for 60 drones moving from a sphere to a 5 × 3 × 4 grid
-and then a double helix. Drag the plot to rotate it. Use --shape x for the old X,
---shape heart for the layered heart, --assignment index for index matching,
-or --gif show.gif to export. The default matching minimizes total 3D
-distance. All axes are in metres. The same vector PD and acceleration limits
-apply in 3D, assuming an ideal lower-level autopilot.
+Drag the 3D plot to rotate it. Other commands:
 
-The helix has 30 evenly spaced heights over 5 m. Two drones occupy opposite
-points on a circle of radius 2 m at each height. The angle increases from
-π/2 to π/2 + 4π, giving each strand two full turns. These slots are destinations.
-Each drone flies directly toward its assigned slot using the same controller.
+```bash
+python -m drone_swarm.demo3d --shape heart
+python -m drone_swarm.demo3d --assignment index
+mkdir -p outputs
+python -m drone_swarm.demo3d --gif outputs/show.gif
+```
 
-## Single-drone physics demo (optional)
+The 3D demo defaults to sphere → grid → double helix with 60 drones.
+Index matching assigns targets in array order. Minimum matching minimizes the
+sum of drone-to-target Euclidean distances using SciPy's modified
+Jonker–Volgenant assignment implementation.
 
-Run a separate Crazyflie CF2X simulation using the open-source
-[gym-pybullet-drones](https://github.com/learnsyslab/gym-pybullet-drones) environment
-and its built-in PID controller. On macOS, in a terminal with Conda initialized
-and Apple's command-line build tools available:
+## Quadrotor physics
 
-    conda create -n swarm-physics python=3.12 -y
-    conda activate swarm-physics
-    CFLAGS="-Dfdopen=fdopen" python -m pip install pybullet --no-cache-dir
-    python -m pip install git+https://github.com/learnsyslab/gym-pybullet-drones.git
-    cd ~/drone-swarm
-    python physics_demo.py --gui
+The optional physics dependency requires Python 3.12. On macOS, install Apple's
+command-line build tools before building PyBullet. Create the environment once:
 
-Omit --gui to run headlessly. The initial setpoint is a hover at 1 m altitude.
-After two simulated seconds the position setpoint shifts 1 m horizontally.
-The controller commands four motor speeds. PyBullet computes the resulting
-translation and rotation. The terminal reports position and tilt during flight.
+```bash
+conda create -n swarm-physics python=3.12 pip -y
+conda activate swarm-physics
+CFLAGS="-Dfdopen=fdopen" python -m pip install --no-cache-dir pybullet
+python -m pip install -e ".[physics]"
+```
 
-In the same swarm-physics environment, run `python physics_swarm.py --gui`
-for the 60-Crazyflie sphere → grid → double helix experiment. Omit `--gui`
-for a headless run. Each vehicle tracks the positions and segment velocities
-from the original point-model show. The final output measures spacing and
-formation errors from the PyBullet positions sampled at 48 Hz.
+If you already installed the physics dependencies in this environment, install
+just this project's package with `python -m pip install -e .`.
+
+```bash
+python -m drone_swarm.physics_demo --gui
+python -m drone_swarm.physics_swarm --gui
+```
+
+Omit `--gui` for headless execution. The swarm run initializes drones in the
+sphere at altitude and then follows the reference schedule. Each drone receives
+desired positions and velocities at 48 Hz. Its own built-in PID controller
+computes four motor RPM commands. PyBullet advances the dynamics at 240 Hz.
+Loading and simulation can take longer than the simulated flight duration.
+
+The physics integration uses the open-source
+[gym-pybullet-drones](https://github.com/learnsyslab/gym-pybullet-drones)
+package, its `CtrlAviary` environment, `DroneModel.CF2X` model, and
+`DSLPIDControl` controller. The optional dependency is pinned to the installed
+upstream commit in `pyproject.toml`. It supplies vehicle parameters, motor thrust
+and torque calculations, and the flight controller. PyBullet supplies rigid-body
+integration and the GUI. The current physics mode uses gravity, thrust, torque,
+and contact dynamics. Optional aerodynamic drag, ground effect, and downwash
+models are disabled.
+
+## Mathematical model and measurements
+
+The reference model uses position p, velocity v, and commanded acceleration u:
+
+```text
+p_dot = v
+v_dot = u
+u = norm_limit((target - p) - 2v, 2 m/s²)
+```
+
+Semi-implicit Euler updates velocity before position at a 0.050 s timestep.
+Total speed is limited to 2.000 m/s and acceleration to 2.000 m/s².
+
+Reference-model arrival requires every drone's position error ≤ 0.100 m and
+speed ≤ 0.100 m/s for consecutive samples spanning 0.500 s. Each arrival is
+followed by a 1.000 s controlled hold. Position and velocity carry through
+formation transitions. The PyBullet experiment follows this reference schedule
+and reports final position errors. It does not independently wait for actual
+quadrotor settling.
+
+The detector checks each unique pair's closest approach along the straight
+segment between consecutive samples. One contiguous episode below 0.750 m
+counts as one spacing violation for that pair. These are center-spacing
+measurements. Physical contact counts are not collected. Animation highlights
+use separation at displayed frames.
+
+Observed results for the minimum-distance assignment:
+
+| Transition | Reference episodes | PyBullet episodes | PyBullet minimum separation | PyBullet worst final error |
+|---|---:|---:|---:|---:|
+| Sphere → grid | 0 | 0 | 1.497 m | 0.029 m |
+| Grid → double helix | 7 | 5 | 0.640 m | 0.033 m |
+
+The helix has two opposite slots at each of 30 heights. Each strand makes two
+turns around a 2.000 m radius over 5.000 m of height. Its minimum final slot
+spacing is 0.877 m. This geometry was selected after trying several layouts as
+a transition stress case. These results describe that selected experiment.
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `drone_swarm/model.py` | Point dynamics, PD tracking, and motion limits |
+| `drone_swarm/planner.py` | 3D formations and target assignment |
+| `drone_swarm/simulation.py` | Reference simulation and measurements |
+| `drone_swarm/demo3d.py` | 3D reference animation |
+| `drone_swarm/physics_demo.py` | Single-quadrotor hover and movement demo |
+| `drone_swarm/physics_swarm.py` | 60-quadrotor reference tracking experiment |
+| `tests/` | Automated baseline checks |
+| `docs/assets/` | Existing plots and animation |
+| `outputs/` | Suggested location for generated files, ignored by Git |
+
+After editable installation, you can also use the commands `swarm-3d`,
+`swarm-physics-demo`, and `swarm-physics`.
+
+## Verification
+
+```bash
+python -m unittest discover -s tests -v
+python -m drone_swarm.physics_swarm
+```
+
+The six baseline tests check crossing detection, episode counting, equilibrium,
+motion limits, assignments, arrival, and the 3D helix transition at two timesteps.
+Physics verification is a separate headless integration run.
+
+## Remaining work
+
+- Add collision-aware centralized trajectory planning.
+- Compare it with direct target tracking across multiple transitions.
+- Verify actual quadrotor settling and tracking error throughout the motion.
+- Evaluate safety, completion time, total travel, and planning cost.
+
+## Initialize Git and push
+
+Run these commands from the repository root after reviewing the files:
+
+```bash
+git init -b main
+git add .
+git status
+git commit -m "Initial drone swarm simulation"
+```
+
+Create an empty GitHub repository, then use its URL:
+
+```bash
+git remote add origin https://github.com/YOUR_USERNAME/drone-swarm.git
+git push -u origin main
+```

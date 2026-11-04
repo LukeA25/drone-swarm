@@ -6,8 +6,8 @@ import pybullet as pb
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
 from gym_pybullet_drones.utils.enums import DroneModel
-from demo import metrics, run_show
-from demo3d import formation3d
+from .simulation import metrics, run_show
+from .planner import formation3d
 
 
 def main():
